@@ -18,7 +18,8 @@ const T = {
     m_sinpe: 'SINPE Móvil (colones)', m_paypal: 'Tarjeta o PayPal (dólares)', m_demo: 'Pago simulado (pruebas)',
     pay_sinpe: 'Continuar con SINPE Móvil', pay_demo: 'Pagar (simulado)', pay_paypal: 'Paga con los botones de arriba',
     creating: 'Preparando…', pay_err: 'No se pudo completar el pago. Intenta de nuevo.', no_pay: 'Los pagos aún no están disponibles.',
-    bad_email: 'Escribe un correo válido.', help: 'Escríbenos por WhatsApp si no encuentras tu foto',
+    bad_email: 'Escribe un correo válido.',
+    locked_title: 'Sesión privada', locked_sub: 'Escribe la contraseña que te dio el fotógrafo para ver las fotos.', unlock: 'Entrar', bad_pw: 'Contraseña incorrecta.', help: 'Escríbenos por WhatsApp si no encuentras tu foto',
   },
   en: {
     hero_sub: 'Find your wave. Download your original full-quality photo or video, no watermark.',
@@ -39,7 +40,8 @@ const T = {
     m_sinpe: 'SINPE Móvil (colones, Costa Rica)', m_paypal: 'Card or PayPal (USD)', m_demo: 'Simulated payment (testing)',
     pay_sinpe: 'Continue with SINPE Móvil', pay_demo: 'Pay (simulated)', pay_paypal: 'Pay with the buttons above',
     creating: 'Preparing…', pay_err: 'Payment could not be completed. Please try again.', no_pay: 'Payments are not available yet.',
-    bad_email: 'Enter a valid email.', help: "Message us on WhatsApp if you can't find your photo",
+    bad_email: 'Enter a valid email.',
+    locked_title: 'Private session', locked_sub: 'Enter the password the photographer gave you to see the photos.', unlock: 'Enter', bad_pw: 'Wrong password.', help: "Message us on WhatsApp if you can't find your photo",
   },
 };
 let lang = localStorage.getItem('lang') || ((navigator.language || 'es').startsWith('en') ? 'en' : 'es');
@@ -204,8 +206,10 @@ function renderPacks() {
 }
 
 function renderBanner() {
-  const b = $('#banner'); b.hidden = !session;
-  if (!session) return;
+  const b = $('#banner'); b.hidden = !session || session.locked;
+  $('#lockForm').hidden = !(session && session.locked);
+  $('#filters').hidden = Boolean(session?.locked); $('#packs').hidden = Boolean(session?.locked);
+  if (!session || session.locked) return;
   $('#bName').textContent = session.name;
   $('#bSub').textContent = [session.spot, fmtDate(session.shot_date), t('session_files', session.count)].filter(Boolean).join(' · ');
   $('#bAll').textContent = t('session_all', session.count, session.all_price_cents ? usd(session.all_price_cents) : '');
@@ -219,6 +223,7 @@ function markCards() {
 
 function render() {
   const grid = $('#grid');
+  if (session?.locked) { grid.replaceChildren(); return; }
   if (!items.length) { const p = document.createElement('p'); p.className = 'empty'; p.textContent = t('empty'); grid.replaceChildren(p); return; }
   grid.replaceChildren(...items.map((mm) => {
     const card = document.createElement('div'); card.className = 'card';
@@ -243,6 +248,7 @@ function render() {
 }
 
 async function load() {
+  if (session?.locked) { items = []; render(); return; }
   const qs = new URLSearchParams(Object.entries(state).filter(([, v]) => v));
   items = await api('/api/media?' + qs);
   render();
@@ -292,6 +298,16 @@ $('#bAll').addEventListener('click', async () => {
 });
 $('#bCopy').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(session.url); $('#bCopy').textContent = t('copied'); setTimeout(() => { $('#bCopy').textContent = t('copy_link'); }, 1500); } catch { prompt('', session.url); }
+});
+
+// ---------- sesión con contraseña ----------
+$('#lockForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    await post(`/api/sessions/${session.code}/unlock`, { password: $('#lockPw').value });
+    session = await api('/api/sessions/' + session.code);
+    applyLang(); await Promise.all([load(), refreshQuote()]);
+  } catch { $('#lockMsg').textContent = t('bad_pw'); }
 });
 
 // ---------- filtros e idioma ----------

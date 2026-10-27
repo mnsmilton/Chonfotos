@@ -6,11 +6,12 @@ Sitio para un fotógrafo de surf: sube fotos/videos, se publican **con marca de 
 1. **Sesiones** (`/admin`): cada salida (playa + fecha) es una sesión con su **enlace propio** (`/s/<código>`) y una **tarjeta con QR imprimible** (`/card/<código>`) para repartir en la playa. También hay un QR del sitio completo.
 2. **Subida**: el fotógrafo arrastra fotos (JPG/PNG/WebP) o videos (MP4/MOV/WebM) a una sesión. El original queda en una carpeta **privada** y se genera la vista previa **con marca de agua** y una miniatura.
 3. **Galería pública** (`/`): filtros por sesión, playa, fecha y foto/video; ES/EN; botón **+** para armar el carrito; compartir la sesión por WhatsApp.
-4. **Carrito y paquetes**: precio por archivo (por defecto $20) + paquetes editables (ej. 3 por $50, 5 por $75) + precio opcional de **toda la sesión**. El servidor calcula siempre el mejor precio para el cliente.
-5. **Pago**
+4. **Quién ve cada sesión**: *pública* (sale en la galería y en los filtros), *solo con el enlace* (no sale en el listado; solo quien tenga el enlace o el QR) o *enlace + contraseña* (además pide la contraseña, útil para escuelas o clientes privados). La contraseña protege el acceso a la sesión; las vistas previas llevan marca de agua de todos modos.
+5. **Carrito y paquetes**: precio por archivo (por defecto $20) + paquetes editables (ej. 3 por $50, 5 por $75) + precio opcional de **toda la sesión**. El servidor calcula siempre el mejor precio para el cliente.
+6. **Pago**
    - **SINPE Móvil** (locales): el cliente ve el monto en colones, tu número y una referencia (CH1234). Transfiere y pulsa "Ya hice el pago". Tú ves el pedido en el panel, verificas en tu app del banco y pulsas **Confirmar pago**. El tipo de cambio se edita en el panel.
    - **PayPal / tarjeta** (turistas, USD): se captura el pago y el servidor **verifica monto y moneda** antes de entregar nada.
-6. **Entrega**: enlace `/d/<token>` con todos los archivos del pedido (30 días, 10 descargas por archivo). Se envía por correo (si hay SMTP) y por **WhatsApp**: al confirmar un SINPE el panel abre un chat de WhatsApp con el mensaje y el enlace listos para enviar; el cliente también puede enviarse el enlace a sí mismo. (Es "clic para enviar"; el envío 100 % automático requiere la API de WhatsApp Business, de pago.)
+7. **Entrega**: enlace `/d/<token>` con todos los archivos del pedido (30 días, 10 descargas por archivo). Se envía por correo (si hay SMTP) y por **WhatsApp**: al confirmar un SINPE el panel abre un chat de WhatsApp con el mensaje y el enlace listos para enviar; el cliente también puede enviarse el enlace a sí mismo. (Es "clic para enviar"; el envío 100 % automático requiere la API de WhatsApp Business, de pago.)
 
 Los originales nunca se sirven por URL pública; solo `/d/<token>/<archivo>` tras un pago verificado o confirmado.
 

@@ -38,7 +38,16 @@
     </div>
   </div>
 
-  <div class="filters">
+  <form class="banner" id="lockForm" hidden style="margin-top:22px">
+    <div><h2 data-i18n="locked_title"></h2><p data-i18n="locked_sub"></p></div>
+    <div class="acts" style="align-items:center">
+      <input type="password" id="lockPw" required autocomplete="off" style="padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit">
+      <button class="btn small" data-i18n="unlock"></button>
+      <span class="msg err" id="lockMsg"></span>
+    </div>
+  </form>
+
+  <div class="filters" id="filters">
     <label><span data-i18n="f_session"></span><select id="fSession"></select></label>
     <label><span data-i18n="f_spot"></span><select id="fSpot"></select></label>
     <label><span data-i18n="f_date"></span><select id="fDate"></select></label>

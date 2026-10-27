@@ -38,6 +38,13 @@
       <label class="field">Playa / spot <input id="sSpot" maxlength="80" placeholder="Playa Hermosa"></label>
       <label class="field">Fecha <input type="date" id="sDate"></label>
       <label class="field">Toda la sesión (USD, opcional) <input type="number" id="sAll" min="1" step="1" placeholder="p. ej. 60"></label>
+      <label class="field">Quién la ve
+        <select id="sVis">
+          <option value="public">Pública (sale en la galería)</option>
+          <option value="link">Solo con el enlace</option>
+          <option value="password">Enlace + contraseña</option>
+        </select></label>
+      <label class="field" id="sPwWrap" hidden>Contraseña <input id="sPw" minlength="4" maxlength="60" autocomplete="off"></label>
       <div style="align-self:end"><button class="btn">Crear sesión</button></div>
     </form>
     <div class="items" id="sessions"></div>

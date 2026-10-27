@@ -75,6 +75,28 @@ function normPhone(v) {
   return d.length >= 10 && d.length <= 15 ? d : '';
 }
 
+// ---------- visibilidad de sesiones: pública · solo con enlace · enlace con contraseña ----------
+const VISIBILITIES = ['public', 'link', 'password'];
+function hashPassword(pw) {
+  const salt = crypto.randomBytes(16);
+  return `${salt.toString('hex')}:${crypto.scryptSync(pw, salt, 32).toString('hex')}`;
+}
+function checkPassword(pw, stored) {
+  const [salt, hash] = String(stored || '').split(':');
+  if (!salt || !hash) return false;
+  const a = crypto.scryptSync(String(pw), Buffer.from(salt, 'hex'), 32);
+  const b = Buffer.from(hash, 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+const unlockCookie = (code) => `u_${code}`;
+function isUnlocked(req, code) {
+  const [exp, sig] = (cookies(req)[unlockCookie(code)] || '').split('.');
+  return Boolean(exp && sig && Number(exp) > Date.now() && safeEq(sig, sign(`${code}.${exp}`)));
+}
+/** ¿Puede esta visita ver el contenido de la sesión? (las de contraseña exigen haberla desbloqueado) */
+const canView = (req, s) => !s || s.visibility !== 'password' || isUnlocked(req, s.code);
+const PUBLIC_ONLY = `(session_code IS NULL OR session_code IN (SELECT code FROM sessions WHERE visibility='public'))`;
+
 function publicMedia(m) {
   return {
     id: m.id, kind: m.kind, title: m.title, spot: m.spot, shot_date: m.shot_date, session: m.session_code,
@@ -83,7 +105,7 @@ function publicMedia(m) {
   };
 }
 const sessionView = (s) => ({
-  code: s.code, name: s.name, spot: s.spot, shot_date: s.shot_date, all_price_cents: s.all_price_cents,
+  code: s.code, name: s.name, spot: s.spot, shot_date: s.shot_date, all_price_cents: s.all_price_cents, visibility: s.visibility,
   count: db.prepare(`SELECT COUNT(*) c FROM media WHERE session_code=? AND status='ready' AND active=1`).get(s.code).c,
   url: `${config.baseUrl}/s/${s.code}`,
 });
@@ -95,9 +117,13 @@ app.get('/api/admin/sessions', requireAdmin, (req, res) => {
 app.post('/api/admin/sessions', requireAdmin, (req, res) => {
   const name = cleanText(req.body?.name, 100);
   if (!name) return res.status(400).json({ error: 'Pon un nombre a la sesión.' });
+  const visibility = VISIBILITIES.includes(req.body?.visibility) ? req.body.visibility : 'public';
+  const password = String(req.body?.password ?? '');
+  if (visibility === 'password' && password.length < 4) return res.status(400).json({ error: 'La contraseña debe tener al menos 4 caracteres.' });
   const s = { code: sessionCode(), name, spot: cleanText(req.body?.spot, 80), shot_date: cleanDate(req.body?.shot_date),
-    all_price_cents: req.body?.all_price ? cleanPrice(req.body.all_price) : null };
-  db.prepare('INSERT INTO sessions (code, name, spot, shot_date, all_price_cents) VALUES (?,?,?,?,?)').run(s.code, s.name, s.spot, s.shot_date, s.all_price_cents);
+    all_price_cents: req.body?.all_price ? cleanPrice(req.body.all_price) : null, visibility };
+  db.prepare('INSERT INTO sessions (code, name, spot, shot_date, all_price_cents, visibility, password_hash) VALUES (?,?,?,?,?,?,?)')
+    .run(s.code, s.name, s.spot, s.shot_date, s.all_price_cents, visibility, visibility === 'password' ? hashPassword(password) : null);
   res.status(201).json(sessionView(s));
 });
 app.patch('/api/admin/sessions/:code', requireAdmin, (req, res) => {
@@ -109,8 +135,18 @@ app.patch('/api/admin/sessions/:code', requireAdmin, (req, res) => {
     spot: 'spot' in b ? cleanText(b.spot, 80) : s.spot,
     shot_date: 'shot_date' in b ? cleanDate(b.shot_date) : s.shot_date,
     all: 'all_price' in b ? (b.all_price ? cleanPrice(b.all_price) : null) : s.all_price_cents,
+    visibility: VISIBILITIES.includes(b.visibility) ? b.visibility : s.visibility,
+    hash: s.password_hash,
   };
-  db.prepare('UPDATE sessions SET name=?, spot=?, shot_date=?, all_price_cents=? WHERE code=?').run(n.name, n.spot, n.shot_date, n.all, s.code);
+  const newPassword = String(b.password ?? '');
+  if (n.visibility === 'password') {
+    if (newPassword) {
+      if (newPassword.length < 4) return res.status(400).json({ error: 'La contraseña debe tener al menos 4 caracteres.' });
+      n.hash = hashPassword(newPassword);
+    } else if (!n.hash) return res.status(400).json({ error: 'Define una contraseña para esta sesión.' });
+  } else n.hash = null;
+  db.prepare('UPDATE sessions SET name=?, spot=?, shot_date=?, all_price_cents=?, visibility=?, password_hash=? WHERE code=?')
+    .run(n.name, n.spot, n.shot_date, n.all, n.visibility, n.hash, s.code);
   db.prepare('UPDATE media SET spot=?, shot_date=? WHERE session_code=?').run(n.spot, n.shot_date, s.code);
   res.json({ ok: true });
 });
@@ -246,7 +282,12 @@ app.get('/api/config', (req, res) => {
 app.get('/api/media', (req, res) => {
   const where = [`status='ready'`, 'active=1'];
   const args = [];
-  if (req.query.session) { where.push('session_code=?'); args.push(String(req.query.session)); }
+  if (req.query.session) {
+    const s = db.prepare('SELECT * FROM sessions WHERE code=?').get(String(req.query.session));
+    if (!s) return res.json([]);
+    if (!canView(req, s)) return res.status(403).json({ error: 'Esta sesión requiere contraseña.', locked: true });
+    where.push('session_code=?'); args.push(s.code);
+  } else where.push(PUBLIC_ONLY); // las sesiones "solo enlace" o con contraseña no salen en el listado general
   if (req.query.spot) { where.push('spot=?'); args.push(String(req.query.spot)); }
   if (/^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '')) { where.push('shot_date=?'); args.push(req.query.date); }
   if (['photo', 'video'].includes(req.query.kind)) { where.push('kind=?'); args.push(req.query.kind); }
@@ -254,11 +295,11 @@ app.get('/api/media', (req, res) => {
 });
 
 app.get('/api/filters', (req, res) => {
-  const base = `FROM media WHERE status='ready' AND active=1`;
+  const base = `FROM media WHERE status='ready' AND active=1 AND ${PUBLIC_ONLY}`;
   res.json({
     spots: db.prepare(`SELECT DISTINCT spot ${base} AND spot<>'' ORDER BY spot`).all().map((r) => r.spot),
     dates: db.prepare(`SELECT DISTINCT shot_date ${base} AND shot_date<>'' ORDER BY shot_date DESC LIMIT 60`).all().map((r) => r.shot_date),
-    sessions: db.prepare(`SELECT code, name, shot_date FROM sessions s WHERE EXISTS (SELECT 1 ${base} AND session_code=s.code) ORDER BY shot_date DESC, created_at DESC LIMIT 100`).all(),
+    sessions: db.prepare(`SELECT code, name, shot_date FROM sessions s WHERE s.visibility='public' AND EXISTS (SELECT 1 ${base} AND session_code=s.code) ORDER BY shot_date DESC, created_at DESC LIMIT 100`).all(),
   });
 });
 
@@ -266,7 +307,17 @@ app.get('/api/sessions/:code', (req, res) => {
   const s = db.prepare('SELECT * FROM sessions WHERE code=?').get(req.params.code);
   if (!s) return res.status(404).json({ error: 'Sesión no encontrada' });
   const { code, name, spot, shot_date, all_price_cents, count, url } = sessionView(s);
-  res.json({ code, name, spot, shot_date, all_price_cents, count, url });
+  const locked = !canView(req, s);
+  res.json({ code, name, spot, shot_date, all_price_cents: locked ? null : all_price_cents, count: locked ? null : count, url, locked });
+});
+
+app.post('/api/sessions/:code/unlock', limit('unlock', 10, 15 * 60_000), (req, res) => {
+  const s = db.prepare('SELECT * FROM sessions WHERE code=?').get(req.params.code);
+  if (!s || s.visibility !== 'password') return res.status(404).json({ error: 'Sesión no encontrada' });
+  if (!checkPassword(req.body?.password ?? '', s.password_hash)) return res.status(401).json({ error: 'Contraseña incorrecta' });
+  const exp = String(Date.now() + 30 * 86400_000);
+  res.cookie(unlockCookie(s.code), `${exp}.${sign(`${s.code}.${exp}`)}`, { httpOnly: true, sameSite: 'lax', secure: req.secure, maxAge: 30 * 86400_000, path: '/' });
+  res.json({ ok: true });
 });
 
 // QR de una página de este mismo sitio (para tarjetas impresas)
@@ -281,10 +332,11 @@ app.get('/card/:code', publicPage('card.html'));
 app.use('/media', express.static(dirs.public, { maxAge: '7d', immutable: true, index: false, dotfiles: 'deny' }));
 
 // ---------- carrito y precios ----------
-function loadCart(ids) {
+function loadCart(req, ids) {
   const unique = [...new Set((Array.isArray(ids) ? ids : []).map(String))].slice(0, 100);
   if (!unique.length) return [];
-  return db.prepare(`SELECT id, price_cents, session_code FROM media WHERE status='ready' AND active=1 AND id IN (${unique.map(() => '?').join(',')})`).all(...unique);
+  const rows = db.prepare(`SELECT id, price_cents, session_code FROM media WHERE status='ready' AND active=1 AND id IN (${unique.map(() => '?').join(',')})`).all(...unique);
+  return rows.filter((r) => !r.session_code || canView(req, db.prepare('SELECT code, visibility FROM sessions WHERE code=?').get(r.session_code)));
 }
 function priceCart(items) {
   const sessions = new Map();
@@ -298,7 +350,7 @@ function priceCart(items) {
 }
 
 app.post('/api/quote', limit('quote', 120, 10 * 60_000), (req, res) => {
-  const items = loadCart(req.body?.ids);
+  const items = loadCart(req, req.body?.ids);
   res.json({ ids: items.map((i) => i.id), ...priceCart(items) });
 });
 
@@ -308,7 +360,7 @@ const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
 app.post('/api/checkout', limit('checkout', 20, 10 * 60_000), wrap(async (req, res) => {
   const email = cleanText(req.body?.email, 254).toLowerCase();
   if (!EMAIL.test(email)) return res.status(400).json({ error: 'Correo inválido' });
-  const items = loadCart(req.body?.ids);
+  const items = loadCart(req, req.body?.ids);
   if (!items.length) return res.status(400).json({ error: 'El carrito está vacío' });
   const phone = normPhone(req.body?.phone);
   const method = String(req.body?.method);

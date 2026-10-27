@@ -22,11 +22,12 @@ $('#loginForm').addEventListener('submit', async (e) => {
 $('#logout').addEventListener('click', async (e) => { e.preventDefault(); await api('/api/admin/logout', { method: 'POST' }); show(false); });
 
 // ---------- sesiones ----------
+$('#sVis').addEventListener('change', () => { $('#sPwWrap').hidden = $('#sVis').value !== 'password'; $('#sPw').required = $('#sVis').value === 'password'; });
 $('#sesForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
-    const s = await api('/api/admin/sessions', json('POST', { name: $('#sName').value, spot: $('#sSpot').value, shot_date: $('#sDate').value, all_price: $('#sAll').value }));
-    e.target.reset(); await refresh(); $('#upSession').value = s.code;
+    const s = await api('/api/admin/sessions', json('POST', { name: $('#sName').value, spot: $('#sSpot').value, shot_date: $('#sDate').value, all_price: $('#sAll').value, visibility: $('#sVis').value, password: $('#sPw').value }));
+    e.target.reset(); $('#sPwWrap').hidden = true; await refresh(); $('#upSession').value = s.code;
   } catch (err) { fail(err); }
 });
 
@@ -38,12 +39,15 @@ function sessionRow(s) {
       const name = prompt('Nombre', s.name); if (name === null) return;
       const spot = prompt('Playa / spot', s.spot); if (spot === null) return;
       const all = prompt('Precio de toda la sesión en USD (vacío = sin precio especial)', s.all_price_cents ? s.all_price_cents / 100 : ''); if (all === null) return;
-      await api('/api/admin/sessions/' + s.code, json('PATCH', { name, spot, all_price: all })); refresh();
+      const vis = prompt('Quién la ve: public (pública), link (solo con enlace) o password (con contraseña)', s.visibility); if (vis === null) return;
+      const body = { name, spot, all_price: all, visibility: vis.trim() };
+      if (body.visibility === 'password') { const pw = prompt(s.visibility === 'password' ? 'Nueva contraseña (vacío = conservar la actual)' : 'Contraseña para esta sesión (mínimo 4 caracteres)', ''); if (pw === null) return; body.password = pw; }
+      await api('/api/admin/sessions/' + s.code, json('PATCH', body)); refresh();
     }),
     btn('Borrar', 'danger', async () => { if (confirm('¿Borrar la sesión?')) { await api('/api/admin/sessions/' + s.code, { method: 'DELETE' }); refresh(); } }));
   return el('div', { className: 'item', style: 'grid-template-columns:1fr auto' },
     el('div', { className: 'info' }, el('strong', {}, s.name),
-      el('small', {}, [s.spot, s.shot_date, `${s.count} archivos`, s.all_price_cents ? `toda la sesión ${usd(s.all_price_cents)}` : ''].filter(Boolean).join(' · ')),
+      el('small', {}, [s.spot, s.shot_date, `${s.count} archivos`, s.all_price_cents ? `toda la sesión ${usd(s.all_price_cents)}` : '', { public: 'pública', link: 'solo con enlace', password: 'con contraseña 🔒' }[s.visibility]].filter(Boolean).join(' · ')),
       el('small', {}, s.url)), acts);
 }
 

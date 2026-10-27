@@ -23,6 +23,8 @@ db.exec(`
     spot            TEXT NOT NULL DEFAULT '',
     shot_date       TEXT NOT NULL DEFAULT '',
     all_price_cents INTEGER,            -- precio de "toda la sesión" (opcional)
+    visibility      TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public','link','password')),
+    password_hash   TEXT,               -- scrypt "sal:hash" (solo si visibility = 'password')
     created_at      TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -74,6 +76,11 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_items_media ON order_items(media_id);
 `);
+
+// Migración para bases creadas antes de existir la visibilidad.
+const sessionCols = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
+if (!sessionCols.includes('visibility')) db.exec(`ALTER TABLE sessions ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'`);
+if (!sessionCols.includes('password_hash')) db.exec('ALTER TABLE sessions ADD COLUMN password_hash TEXT');
 
 export function getSettings() {
   const rows = Object.fromEntries(db.prepare('SELECT key, value FROM settings').all().map((r) => [r.key, r.value]));
