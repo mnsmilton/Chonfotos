@@ -10,7 +10,8 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 export const config = {
   root,
   port: Number(e.PORT) || 3000,
-  baseUrl: (e.BASE_URL || `http://localhost:${Number(e.PORT) || 3000}`).replace(/\/$/, ''),
+  // En Render, RENDER_EXTERNAL_URL trae la dirección pública; BASE_URL solo hace falta con dominio propio.
+  baseUrl: (e.BASE_URL || e.RENDER_EXTERNAL_URL || `http://localhost:${Number(e.PORT) || 3000}`).replace(/\/$/, ''),
   production: e.NODE_ENV === 'production',
   dataDir: path.resolve(e.DATA_DIR || path.join(root, 'data')),
 

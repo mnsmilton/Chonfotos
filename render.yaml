@@ -20,8 +20,6 @@ services:
         generateValue: true
       - key: ADMIN_PASSWORD
         sync: false
-      - key: BASE_URL          # p. ej. https://chonfotos.onrender.com o tu dominio
-        sync: false
       - key: SINPE_NUMBER
         sync: false
       - key: SINPE_NAME
@@ -31,8 +29,6 @@ services:
       - key: WHATSAPP          # solo dígitos con código de país, ej. 50688888888
         sync: false
       - key: PAYPAL_ENV
-        value: sandbox         # cambia a "live" cuando termines de probar
-      - key: PAYPAL_CLIENT_ID
-        sync: false
-      - key: PAYPAL_SECRET
-        sync: false
+        value: sandbox         # cambia a "live" cuando termines de probar PayPal
+      # PayPal se agrega después, desde Environment: PAYPAL_CLIENT_ID y PAYPAL_SECRET
+      # (con ambos definidos aparece el pago con tarjeta/PayPal; sin ellos solo SINPE).
